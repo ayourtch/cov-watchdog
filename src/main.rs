@@ -262,6 +262,8 @@ fn main() {
     if let Ok(data) = std::fs::read_to_string(&opts.in_file) {
         let cov: CovReport = serde_json::from_str(&data).unwrap();
         let mut out_bugs: HashMap<u64, CovRecord> = HashMap::new();
+        let mut personal_out_bugs: HashMap<String, HashMap<u64, CovRecord>> = HashMap::new();
+        let mut some_query = false;
 
         if opts.verbose > 2 {
             log::warn!("Cov report: {:#?}", &cov);
@@ -275,23 +277,47 @@ fn main() {
         for bug in cov.v1.rows {
             let fname = bug.displayFile.trim_start_matches("/");
             let mentries = get_mentry_for_file(&mf, &fname);
+            let mut orphan = true;
 
             for person in &opts.person {
+                some_query = true;
                 for comp in &mentries {
                     for m in &comp.maintainers {
                         if m.id.contains(person) {
                             out_bugs.insert(bug.cid, bug.clone());
+                            orphan = false;
                         }
                     }
                 }
             }
 
             for component_word in &opts.component_word {
+                some_query = true;
                 for comp in &mentries {
                     if &comp.single_word_name == component_word {
                         out_bugs.insert(bug.cid, bug.clone());
+                        orphan = false;
                     }
                 }
+            }
+
+            /* insert into per-person lists */
+
+            for comp in &mentries {
+                for m in &comp.maintainers {
+                    personal_out_bugs
+                        .entry(m.id.clone())
+                        .or_insert(HashMap::new())
+                        .insert(bug.cid, bug.clone());
+                    orphan = false;
+                }
+            }
+
+            if orphan {
+                personal_out_bugs
+                    .entry("Unidentified owner".to_string())
+                    .or_insert(HashMap::new())
+                    .insert(bug.cid, bug.clone());
             }
         }
         for (_, v) in out_bugs {
@@ -299,6 +325,20 @@ fn main() {
                 "BUG {} in function: {}, file: {}",
                 &v.cid, &v.displayFunction, &v.displayFile
             );
+        }
+
+        if !some_query {
+            /* no other queries specified - show the per-person table */
+
+            for (person, bugs) in personal_out_bugs {
+                println!("{}:", &person);
+                for (_, v) in bugs {
+                    println!(
+                        "    BUG {} in function: {}, file: {}",
+                        &v.cid, &v.displayFunction, &v.displayFile
+                    );
+                }
+            }
         }
     }
 }
