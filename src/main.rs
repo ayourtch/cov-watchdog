@@ -256,9 +256,37 @@ fn get_mentry_for_file(mf: &MaintainerFile, fname: &str) -> Vec<MaintainerEntry>
     meo
 }
 
+fn check_tree_ownership(
+    real_root: &str,
+    root: &str,
+    mf: &MaintainerFile,
+    orphans: &mut Vec<String>,
+) {
+    use std::fs;
+    for entry in fs::read_dir(root).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+
+        let metadata = fs::metadata(&path).unwrap();
+        if metadata.is_file() {
+            let path_str = path.to_str().unwrap().to_string();
+            let fname = path_str.trim_start_matches(real_root);
+            let mentries = get_mentry_for_file(mf, &fname);
+            if mentries.len() == 0 {
+                println!("Orphan file {} (root {})", &fname, real_root);
+                orphans.push(path_str.clone());
+            }
+        }
+        if metadata.is_dir() && entry.file_name() != "." && entry.file_name() != ".." {
+            check_tree_ownership(real_root, &path.to_str().unwrap(), mf, orphans);
+        }
+    }
+}
+
 fn main() {
     env_logger::init();
     let opts: Opts = Opts::parse();
+    let mf = read_maintainer_file(&opts.maintainers_file);
     if let Ok(data) = std::fs::read_to_string(&opts.in_file) {
         let cov: CovReport = serde_json::from_str(&data).unwrap();
         let mut out_bugs: HashMap<u64, CovRecord> = HashMap::new();
@@ -269,7 +297,6 @@ fn main() {
             log::warn!("Cov report: {:#?}", &cov);
         }
 
-        let mf = read_maintainer_file(&opts.maintainers_file);
         if opts.verbose > 2 {
             log::warn!("maintainers file: {:#?}", &mf);
         }
@@ -340,5 +367,9 @@ fn main() {
                 }
             }
         }
+    } else {
+        // assume it is a directory and attempt to traverse it
+        let mut orphans: Vec<String> = vec![];
+        check_tree_ownership(&opts.in_file, &opts.in_file, &mf, &mut orphans);
     }
 }
