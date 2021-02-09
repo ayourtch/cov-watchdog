@@ -171,14 +171,18 @@ fn read_maintainer_file(fname: &str) -> MaintainerFile {
 }
 
 fn is_wildcard(fpc: &std::path::Component) -> bool {
-    return false;
+    let fpc = fpc.as_os_str().to_str().unwrap();
+    return fpc.contains("*") || fpc.contains("[") || fpc.contains("?");
 }
 
 fn component_match(fpc: &std::path::Component, fc: &std::path::Component) -> bool {
+    use glob::Pattern;
     if fpc == fc {
         return true;
     }
-    return false;
+    Pattern::new(fpc.as_os_str().to_str().unwrap())
+        .unwrap()
+        .matches(fc.as_os_str().to_str().unwrap())
 }
 
 /// FIXME - incomplete
