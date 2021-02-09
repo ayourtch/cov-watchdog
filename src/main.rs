@@ -11,18 +11,18 @@ use regex::Regex;
 struct Opts {
     /// Input file name
     #[clap(short, long)]
-    in_file: Option<String>,
+    in_file: String,
 
     /// Maintainers file name
     #[clap(short, long)]
-    maintainers_file: Option<String>,
+    maintainers_file: String,
 
     /// A level of verbosity, and can be used multiple times
     #[clap(short, long, parse(from_occurrences))]
     verbose: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct CovRecord {
     cid: u64,
     displayType: String,
@@ -39,13 +39,13 @@ struct CovRecord {
     displayFunction: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct CovColumn {
     name: String,
     label: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct ViewContentsV1 {
     offset: usize,
     totalRows: usize,
@@ -53,24 +53,24 @@ struct ViewContentsV1 {
     rows: Vec<CovRecord>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct CovReport {
     #[serde(rename = "viewContentsV1")]
     v1: ViewContentsV1,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Maintainer {
     id: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum FilePattern {
     Include(String),
     Exclude(String),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct MaintainerEntry {
     title: String,
     single_word_name: String,
@@ -80,13 +80,13 @@ struct MaintainerEntry {
     feature_yaml: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct MaintainerFile {
     preamble: Vec<String>,
     entries: Vec<MaintainerEntry>,
 }
 
-fn read_maintainer_file(fname: &str) {
+fn read_maintainer_file(fname: &str) -> MaintainerFile {
     lazy_static! {
         static ref REentry: Regex =
             Regex::new(r"(?x)^(?P<type>[MFECIY]+):\s+(?P<text>.*)$").unwrap();
@@ -107,7 +107,7 @@ fn read_maintainer_file(fname: &str) {
     let data = std::fs::read_to_string(&fname).unwrap();
     for line in data.lines() {
         if REentry.is_match(&line) {
-            println!("E: {}", &line);
+            log::debug!("E: {}", &line);
             if let Some(e) = &mut entry {
                 for cap in REentry.captures_iter(line) {
                     match (cap.name("type").unwrap().as_str()) {
@@ -132,7 +132,7 @@ fn read_maintainer_file(fname: &str) {
                 }
             }
         } else if REtitle.is_match(&line) {
-            println!("T: {}", &line);
+            log::debug!("T: {}", &line);
             if in_intro {
                 if next_title == "".to_string() {
                     next_title = line.to_string().clone();
@@ -160,25 +160,78 @@ fn read_maintainer_file(fname: &str) {
                 });
             }
         } else {
-            println!("L: {}", &line);
+            log::debug!("L: {}", &line);
             if in_intro {
                 mfile.preamble.push(line.to_string());
             }
         }
     }
-    println!("MFile: {:#?}", &mfile);
+    mfile
+}
+
+/// FIXME - incomplete
+fn match_pattern(fp: &str, fname: &str) -> bool {
+    let mut res = false;
+    if fname.starts_with(fp) {
+        res = true;
+    }
+    return res;
+}
+
+fn match_maintainer_entry(mentry: &MaintainerEntry, fname: &str) -> bool {
+    let mut match_include = false;
+    let mut match_exclude = false;
+    for e in &mentry.files {
+        match e {
+            FilePattern::Include(fp) => {
+                if match_pattern(fp, fname) {
+                    match_include = true;
+                }
+            }
+            FilePattern::Exclude(fp) => {
+                if match_pattern(fp, fname) {
+                    match_exclude = true;
+                }
+            }
+        }
+    }
+    match_include && !match_exclude
+}
+
+fn get_mentry_for_file(mf: &MaintainerFile, fname: &str) -> Vec<MaintainerEntry> {
+    let mut meo: Vec<MaintainerEntry> = vec![];
+    for e in &mf.entries {
+        if match_maintainer_entry(e, fname) {
+            meo.push(e.clone());
+        }
+    }
+    meo
 }
 
 fn main() {
     env_logger::init();
     let opts: Opts = Opts::parse();
-    if let Some(fname) = opts.in_file {
-        if let Ok(data) = std::fs::read_to_string(&fname) {
-            let d: CovReport = serde_json::from_str(&data).unwrap();
-            println!("Hello, world, there are {} defects", d.v1.rows.len());
+    if let Ok(data) = std::fs::read_to_string(&opts.in_file) {
+        let data = std::fs::read_to_string(opts.in_file).unwrap();
+        let cov: CovReport = serde_json::from_str(&data).unwrap();
+        if opts.verbose > 2 {
+            log::warn!("Cov report: {:#?}", &cov);
         }
-    }
-    if let Some(fname) = opts.maintainers_file {
-        read_maintainer_file(&fname);
+
+        let mf = read_maintainer_file(&opts.maintainers_file);
+        if opts.verbose > 2 {
+            log::warn!("maintainers file: {:#?}", &mf);
+        }
+
+        for bug in cov.v1.rows {
+            let fname = bug.displayFile.trim_start_matches("/");
+            let mes = get_mentry_for_file(&mf, &fname);
+            println!(
+                "BUG in function: {}, file: {}",
+                &bug.displayFunction, &fname
+            );
+            let matches: Vec<String> = mes.iter().map(|x| x.single_word_name.clone()).collect();
+            println!("Matches: {:?}", &matches);
+        }
     }
 }
