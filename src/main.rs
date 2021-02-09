@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate lazy_static;
 use regex::Regex;
+use std::collections::HashMap;
 
 /// read the json data from Coverity and do something with it
 #[clap(version = env!("GIT_VERSION"), author = "Andrew Yourtchenko <ayourtch@gmail.com>")]
@@ -17,6 +18,14 @@ struct Opts {
     /// MAINTAINERS file name
     #[clap(short, long)]
     maintainers_file: String,
+
+    /// Show the bugs that match maintainer(s) (substring search)
+    #[clap(short, long)]
+    person: Vec<String>,
+
+    /// Show the bugs that match component(s) (exact match)
+    #[clap(short, long)]
+    component_word: Vec<String>,
 
     /// A level of verbosity, and can be used multiple times
     #[clap(short, long, parse(from_occurrences))]
@@ -252,6 +261,8 @@ fn main() {
     let opts: Opts = Opts::parse();
     if let Ok(data) = std::fs::read_to_string(&opts.in_file) {
         let cov: CovReport = serde_json::from_str(&data).unwrap();
+        let mut out_bugs: HashMap<u64, CovRecord> = HashMap::new();
+
         if opts.verbose > 2 {
             log::warn!("Cov report: {:#?}", &cov);
         }
@@ -263,14 +274,31 @@ fn main() {
 
         for bug in cov.v1.rows {
             let fname = bug.displayFile.trim_start_matches("/");
-            let mes = get_mentry_for_file(&mf, &fname);
+            let mentries = get_mentry_for_file(&mf, &fname);
+
+            for person in &opts.person {
+                for comp in &mentries {
+                    for m in &comp.maintainers {
+                        if m.id.contains(person) {
+                            out_bugs.insert(bug.cid, bug.clone());
+                        }
+                    }
+                }
+            }
+
+            for component_word in &opts.component_word {
+                for comp in &mentries {
+                    if &comp.single_word_name == component_word {
+                        out_bugs.insert(bug.cid, bug.clone());
+                    }
+                }
+            }
+        }
+        for (_, v) in out_bugs {
             println!(
-                "BUG in function: {}, file: {}",
-                &bug.displayFunction, &fname
+                "BUG {} in function: {}, file: {}",
+                &v.cid, &v.displayFunction, &v.displayFile
             );
-            // let matches: Vec<String> = mes.iter().map(|x| x.single_word_name.clone()).collect();
-            let matches = mes;
-            println!("Matches: {:#?}", &matches);
         }
     }
 }
