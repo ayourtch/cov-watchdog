@@ -170,13 +170,47 @@ fn read_maintainer_file(fname: &str) -> MaintainerFile {
     mfile
 }
 
+fn is_wildcard(fpc: &std::path::Component) -> bool {
+    return false;
+}
+
+fn component_match(fpc: &std::path::Component, fc: &std::path::Component) -> bool {
+    if fpc == fc {
+        return true;
+    }
+    return false;
+}
+
 /// FIXME - incomplete
 fn match_pattern(fp: &str, fname: &str) -> bool {
-    let mut res = false;
-    if fname.starts_with(fp) {
-        res = true;
+    use std::path::PathBuf;
+    let mut match_subtree = fp.ends_with("/");
+
+    let fp_pb = PathBuf::from(fp);
+    let fname_pb = PathBuf::from(fname);
+
+    // account for a bug or feature where the folders don't end with "/"
+    if !match_subtree {
+        if fp_pb.components().count() > 0 && !is_wildcard(&fp_pb.components().last().unwrap()) {
+            match_subtree = true;
+        }
     }
-    return res;
+
+    for (f, p) in fname_pb.components().zip(fp_pb.components()) {
+        if !component_match(&p, &f) {
+            return false;
+        }
+    }
+
+    if fname_pb.components().count() == fp_pb.components().count() {
+        return true;
+    }
+
+    if fname_pb.components().count() > fp_pb.components().count() {
+        return match_subtree;
+    }
+
+    return false;
 }
 
 fn match_maintainer_entry(mentry: &MaintainerEntry, fname: &str) -> bool {
@@ -230,8 +264,9 @@ fn main() {
                 "BUG in function: {}, file: {}",
                 &bug.displayFunction, &fname
             );
-            let matches: Vec<String> = mes.iter().map(|x| x.single_word_name.clone()).collect();
-            println!("Matches: {:?}", &matches);
+            // let matches: Vec<String> = mes.iter().map(|x| x.single_word_name.clone()).collect();
+            let matches = mes;
+            println!("Matches: {:#?}", &matches);
         }
     }
 }
