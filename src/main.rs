@@ -1,3 +1,4 @@
+#![allow(non_snake_case, non_camel_case_types, non_upper_case_globals)]
 use clap::Clap;
 use env_logger;
 use serde::{Deserialize, Serialize};
@@ -6,14 +7,14 @@ extern crate lazy_static;
 use regex::Regex;
 
 /// read the json data from Coverity and do something with it
-#[clap(version = "0.1", author = "Andrew Yourtchenko <ayourtch@gmail.com>")]
+#[clap(version = env!("GIT_VERSION"), author = "Andrew Yourtchenko <ayourtch@gmail.com>")]
 #[derive(Clap, Debug, Serialize, Deserialize)]
 struct Opts {
-    /// Input file name
+    /// Input JSON file name saved from a URL similar to https://scan9.coverity.com/api/viewContents/issues/v1/28863?projectId=12999&rowCount=-1
     #[clap(short, long)]
     in_file: String,
 
-    /// Maintainers file name
+    /// MAINTAINERS file name
     #[clap(short, long)]
     maintainers_file: String,
 
@@ -110,7 +111,7 @@ fn read_maintainer_file(fname: &str) -> MaintainerFile {
             log::debug!("E: {}", &line);
             if let Some(e) = &mut entry {
                 for cap in REentry.captures_iter(line) {
-                    match (cap.name("type").unwrap().as_str()) {
+                    match cap.name("type").unwrap().as_str() {
                         "M" => e.maintainers.push(Maintainer {
                             id: cap.name("text").unwrap().as_str().to_string(),
                         }),
@@ -212,7 +213,6 @@ fn main() {
     env_logger::init();
     let opts: Opts = Opts::parse();
     if let Ok(data) = std::fs::read_to_string(&opts.in_file) {
-        let data = std::fs::read_to_string(opts.in_file).unwrap();
         let cov: CovReport = serde_json::from_str(&data).unwrap();
         if opts.verbose > 2 {
             log::warn!("Cov report: {:#?}", &cov);
