@@ -15,4 +15,4 @@ log = "*"
 lazy_static = "*"
 regex = "*"
 glob = "*"
-
+chrono = "*"

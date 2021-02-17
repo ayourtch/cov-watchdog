@@ -4,8 +4,11 @@ use env_logger;
 use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate lazy_static;
+use chrono::offset::Utc;
+use chrono::{DateTime, NaiveDateTime, TimeZone};
 use regex::Regex;
 use std::collections::HashMap;
+use std::time::SystemTime;
 
 /// read the json data from Coverity and do something with it
 #[clap(version = env!("GIT_VERSION"), author = "Andrew Yourtchenko <ayourtch@gmail.com>")]
@@ -287,6 +290,11 @@ fn check_tree_ownership(
     }
 }
 
+fn systemtime_to_utc_strring(system_time: std::time::SystemTime) -> String {
+    let datetime: DateTime<Utc> = From::from(system_time);
+    datetime.format("%d/%m/%Y %T").to_string()
+}
+
 fn main() {
     env_logger::init();
     let opts: Opts = Opts::parse();
@@ -359,7 +367,24 @@ fn main() {
         }
 
         if !some_query {
+            use std::time::SystemTime;
+
             /* no other queries specified - show the per-person table */
+
+            let now = SystemTime::now();
+            println!("## Report timing information");
+
+            println!("  * this report ran at {}", &systemtime_to_utc_strring(now));
+            if let Ok(Ok(time)) = std::fs::metadata(&opts.in_file).map(|x| x.modified()) {
+                println!(
+                    "  * source {} mtime is {}",
+                    &opts.in_file,
+                    &systemtime_to_utc_strring(time)
+                );
+            } else {
+                println!("  * {} modification time unknown", &opts.in_file);
+            }
+            println!("\nNote: the 'ownership' is determined automatically from MAINTAINERS file. If you spot incorrect handling of data in MAINTAINERS file, please contact ayourtch@gmail.com.\n");
 
             let mut all_emails: Vec<String> = vec![];
 
