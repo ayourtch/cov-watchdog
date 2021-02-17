@@ -27,6 +27,10 @@ struct Opts {
     #[clap(short, long)]
     component_word: Vec<String>,
 
+    /// Print the list of all maintainers whose components have open issues
+    #[clap(short, long)]
+    list_emails: bool,
+
     /// A level of verbosity, and can be used multiple times
     #[clap(short, long, parse(from_occurrences))]
     verbose: i32,
@@ -357,6 +361,8 @@ fn main() {
         if !some_query {
             /* no other queries specified - show the per-person table */
 
+            let mut all_emails: Vec<String> = vec![];
+
             for (person, bugs) in personal_out_bugs {
                 println!("{}:", &person);
                 for (_, v) in bugs {
@@ -365,6 +371,14 @@ fn main() {
                         &v.cid, &v.displayFunction, &v.displayFile
                     );
                 }
+                all_emails.push(person);
+            }
+            if opts.list_emails {
+                all_emails.sort();
+                all_emails.dedup();
+                all_emails.retain(|x| x != "Unidentified owner");
+                all_emails.retain(|x| !x.contains("Mailing List"));
+                println!("\n\nall emails: {}", all_emails.join("; "));
             }
         }
     } else {
