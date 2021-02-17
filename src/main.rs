@@ -364,10 +364,10 @@ fn main() {
             let mut all_emails: Vec<String> = vec![];
 
             for (person, bugs) in personal_out_bugs {
-                println!("{}:", &person);
+                println!("### {}:", &person);
                 for (_, v) in bugs {
                     println!(
-                        "    BUG {} in function: {}, file: {}",
+                        "  * BUG {} in function: {}, file: {}",
                         &v.cid, &v.displayFunction, &v.displayFile
                     );
                 }
