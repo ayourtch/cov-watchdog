@@ -76,18 +76,18 @@ struct CovReport {
     v1: ViewContentsV1,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct Maintainer {
     id: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum FilePattern {
     Include(String),
     Exclude(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct MaintainerEntry {
     title: String,
     single_word_name: String,
@@ -303,6 +303,7 @@ fn main() {
         let cov: CovReport = serde_json::from_str(&data).unwrap();
         let mut out_bugs: HashMap<u64, CovRecord> = HashMap::new();
         let mut personal_out_bugs: HashMap<String, HashMap<u64, CovRecord>> = HashMap::new();
+        let mut component_out_bugs: HashMap<MaintainerEntry, HashMap<u64, CovRecord>> = HashMap::new();
         let mut some_query = false;
 
         if opts.verbose > 2 {
@@ -352,6 +353,15 @@ fn main() {
                 }
             }
 
+            /* insert into component lists */
+            for comp in &mentries {
+                    component_out_bugs
+                        .entry(comp.clone())
+                        .or_insert(HashMap::new())
+                        .insert(bug.cid, bug.clone());
+            }
+
+
             if orphan {
                 personal_out_bugs
                     .entry("Unidentified owner".to_string())
@@ -398,12 +408,23 @@ fn main() {
                 }
                 all_emails.push(person);
             }
+
             if opts.list_emails {
                 all_emails.sort();
                 all_emails.dedup();
                 all_emails.retain(|x| x != "Unidentified owner");
                 all_emails.retain(|x| !x.contains("Mailing List"));
                 println!("\n\nall emails: {}", all_emails.join("; "));
+            }
+            println!("\n\n## Per-Component Open Coverity Defects");
+            for (component, bugs) in component_out_bugs {
+                println!("### {}:", &component.title);
+                for (_, v) in bugs {
+                    println!(
+                        "  * BUG {} in function: {}, file: {}",
+                        &v.cid, &v.displayFunction, &v.displayFile
+                    );
+                }
             }
         }
     } else {
